@@ -6,16 +6,14 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 
 public class TFTPServer
 {
 	public static final int TFTPPORT = 4970;
 	public static final int BUFSIZE = 516;
-	public static final String READDIR = "/home/username/read/"; //custom address at your PC
-	public static final String WRITEDIR = "/home/username/write/"; //custom address at your PC
+	private int dataSize = 512;
+	public static final String READDIR = "public\\"; //custom address at your PC
+	public static final String WRITEDIR = "/public"; //custom address at your PC
 	// OP codes
 	public static final int OP_RRQ = 1;
 	public static final int OP_WRQ = 2;
@@ -77,9 +75,9 @@ public class TFTPServer
 						// Connect to client
 						sendSocket.connect(clientAddress);
 
-						System.out.printf("%s request for %s from %s using port %d\n",
+						/*System.out.printf("%s request for %s from %s using port %d\n",
 								(reqtype == OP_RRQ)?"Read":"Write",
-								clientAddress.getHostName(), clientAddress.getPort());
+								clientAddress.getHostName(), clientAddress.getPort());*/
 
 						// Read request
 						if (reqtype == OP_RRQ)
@@ -166,121 +164,105 @@ public class TFTPServer
 		return opcode;
 	}
 
-		/**
-		 * Handles RRQ and WRQ requests
-		 *
-		 * @param sendSocket (socket used to send/receive packets)
-		 * @param requestedFile (name of file to read/write)
-		 * @param opcode (RRQ or WRQ)
-		 */
-		private void HandleRQ(DatagramSocket sendSocket, String requestedFile, int opcode)
+	/**
+	 * Handles RRQ and WRQ requests
+	 *
+	 * @param sendSocket (socket used to send/receive packets)
+	 * @param requestedFile (name of file to read/write)
+	 * @param opcode (RRQ or WRQ)
+	 */
+	private void HandleRQ(DatagramSocket sendSocket, String requestedFile, int opcode)
+	{
+		if(opcode == OP_RRQ)
 		{
-			if(opcode == OP_RRQ)
-			{
-				// See "TFTP Formats" in TFTP specification for the DATA and ACK packet contents
-				try {
-					boolean result = send_DATA_receive_ACK(sendSocket, requestedFile);
-				} catch (IOException e) {
-					System.err.println("Something went wrong when parsing the file!!");
-					e.printStackTrace();
-				}
-			}
-			else if (opcode == OP_WRQ)
-			{
-				boolean result = receive_DATA_send_ACK(sendSocket, requestedFile);
-			}
-			else
-			{
-				System.err.println("Invalid request. Sending an error packet.");
-				// See "TFTP Formats" in TFTP specification for the ERROR packet contents
-				//send_ERR(params);
-				return;
+			// See "TFTP Formats" in TFTP specification for the DATA and ACK packet contents
+			try {
+				System.out.println("Sending....");
+				send_DATA_receive_ACK(sendSocket, requestedFile);
+				System.out.println("Sending ended successfully!");
+
+			} catch (IOException e) {
+				System.err.println("Something went wrong when parsing the file!!");
+				e.printStackTrace();
 			}
 		}
+		else if (opcode == OP_WRQ)
+		{
+			//	boolean result = receive_DATA_send_ACK(params);
+		}
+		else
+		{
+			System.err.println("Invalid request. Sending an error packet.");
+			// See "TFTP Formats" in TFTP specification for the ERROR packet contents
+			//send_ERR(params);
+			return;
+		}
+	}
 
-		/**
-		 To be implemented
-		 */
-		private boolean send_DATA_receive_ACK(DatagramSocket sendSocket , String requestedFile) throws IOException {
-				System.out.println("Responding to RRQ issued by: "+sendSocket.getInetAddress()+" Using port: "+ sendSocket.getPort());
-				int blockNumber = 1;
-				boolean transferEnd = false;
-				boolean lastPacket = false;
-				File file = new File(requestedFile);
-				FileInputStream fileInputStream = null;
-				//For now assuming that the file is 512 or less
-				byte[] buf = new byte[512];
-				try {
-					 fileInputStream = new FileInputStream(file);
-				} catch (FileNotFoundException e) {
-					//TODO handle error  1  File not found.
-					//for now We will just print an error message for debugging
-					System.err.println("The file requested was not found!!");
-					e.printStackTrace();
-				}
-				//TODO timeout functionality. problem 2 In case of a read request.
-				int byteRead;
-				while (fileInputStream.available()>=0){
-					//reading data from the file into the buffer
-					byteRead = fileInputStream.read(buf);
-					//if this is the last packet i.e less than 512 bytes
-					if (byteRead<512){
-						//Do something
-						lastPacket = true;
-					}
-					//TODO send the datagram packets and wait for ACK. Problem 1
-				}
+	/**
+	 To be implemented
+	 */
+	private boolean send_DATA_receive_ACK(DatagramSocket sendSocket , String requestedFile) throws IOException {
+		System.out.println("Responding to RRQ issued by: "+sendSocket.getInetAddress()+" Using port: "+ sendSocket.getPort());
+		short blockNumber = 1;
+		boolean transferEnd = false;
+		boolean lastPacket = false;
+		File file = new File(requestedFile);
+		FileInputStream fileInputStream = null;
+		//For now assuming that the file is 512 or less this is the array that will be sent
+		byte[] buf = new byte[dataSize];
+		//receiveAck array will be use to get the ack message
+		byte [] receiveAck = new byte[BUFSIZE];
+		DatagramPacket receiver = new DatagramPacket(receiveAck,receiveAck.length);
+
+		try {
+			fileInputStream = new FileInputStream(file);
+		} catch (FileNotFoundException e) {
+			//TODO handle error  1  File not found.
+			//for now We will just print an error message for debugging
+			System.err.println("The file requested was not found!!");
+			e.printStackTrace();
+		}
+		//TODO timeout functionality. problem 2 In case of a read request.
+		int byteRead;
+		while (fileInputStream.available()>=0){
+			//reading data from the file into the buffer
+			byteRead = fileInputStream.read(buf);
+			//if this is the last packet i.e less than 512 bytes
+
+			//using the TFTPPacket class to construct a datagram.
+			TFTPPacket tftpPacket = new TFTPPacket(blockNumber,buf,byteRead);
+			DatagramPacket sender = tftpPacket.dataPacket();
+			//sending the datagram
+			sendSocket.send(sender);
+			System.out.println("Sent block # " + blockNumber);
+			// Receiving ack message before continuing
+			sendSocket.receive(receiver);
+			short ackNumber = tftpPacket.getAckNumber(receiver);
+			if (ackNumber==blockNumber){
+				System.out.println("The correct block was received by the client!	 block # " + blockNumber);
+				blockNumber++;
+			}else{
+				//TODO implement retransmission later!!!
+				System.err.println("ackNumber is not correct");
+				return false;
+			}
+			if (byteRead<512){
+				fileInputStream.close();
 				return true;
 
 			}
+		}
+		return true;
+	}
 
-		private boolean receive_DATA_send_ACK(DatagramSocket sendSocket , String requestedFile) throws IOException {
-			boolean lastPacketReceived = false;
-			byte[] buffer = new byte[512];
-			DatagramPacket receiverPacket =new DatagramPacket(buffer,buffer.length);
-
-			//first let's create the file using the file name.
-			Files.createFile(Path.of(WRITEDIR + requestedFile));
-
-			//now let's start receiving data through the socket.
-			while(!lastPacketReceived){
-				sendSocket.receive(receiverPacket);
-
-				buffer = receiverPacket.getData();
-
-				//it's time to parse the packet. also write it to the file immediately.
-
-				ByteBuffer wrap = ByteBuffer.wrap(buffer);
-				//extracting the opcode and the block number.
-				int opcode = wrap.getShort();
-				int blockNum = wrap.getShort();
-				int index = wrap.position();
-
-				//extracting the data.
-				byte[] data = new byte[512];
-
-				for(int i = 0; i+index < buffer.length; i++){
-					data[i] = buffer[i+index];
-				}
-
-				// write to the file.
-				Files.write(Path.of(WRITEDIR + requestedFile), data, StandardOpenOption.APPEND);
-
-				//check if it was the last packet and send ack.
-				if(i < 512){
-					lastPacketReceived = true;
-				}
-
-
-			}
-
-
-			}
+		/*private boolean receive_DATA_send_ACK(params)
+			{return true;}
 
 		private void send_ERR(params)
-			{}
+			{}*/
 
-	}
+}
 
 
 

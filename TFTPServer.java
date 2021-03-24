@@ -6,6 +6,9 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 public class TFTPServer
 {
@@ -184,7 +187,7 @@ public class TFTPServer
 			}
 			else if (opcode == OP_WRQ)
 			{
-			//	boolean result = receive_DATA_send_ACK(params);
+				boolean result = receive_DATA_send_ACK(sendSocket, requestedFile);
 			}
 			else
 			{
@@ -231,8 +234,48 @@ public class TFTPServer
 
 			}
 
-		private boolean receive_DATA_send_ACK(params)
-			{return true;}
+		private boolean receive_DATA_send_ACK(DatagramSocket sendSocket , String requestedFile) throws IOException {
+			boolean lastPacketReceived = false;
+			byte[] buffer = new byte[512];
+			DatagramPacket receiverPacket =new DatagramPacket(buffer,buffer.length);
+
+			//first let's create the file using the file name.
+			Files.createFile(Path.of(WRITEDIR + requestedFile));
+
+			//now let's start receiving data through the socket.
+			while(!lastPacketReceived){
+				sendSocket.receive(receiverPacket);
+
+				buffer = receiverPacket.getData();
+
+				//it's time to parse the packet. also write it to the file immediately.
+
+				ByteBuffer wrap = ByteBuffer.wrap(buffer);
+				//extracting the opcode and the block number.
+				int opcode = wrap.getShort();
+				int blockNum = wrap.getShort();
+				int index = wrap.position();
+
+				//extracting the data.
+				byte[] data = new byte[512];
+
+				for(int i = 0; i+index < buffer.length; i++){
+					data[i] = buffer[i+index];
+				}
+
+				// write to the file.
+				Files.write(Path.of(WRITEDIR + requestedFile), data, StandardOpenOption.APPEND);
+
+				//check if it was the last packet and send ack.
+				if(i < 512){
+					lastPacketReceived = true;
+				}
+
+
+			}
+
+
+			}
 
 		private void send_ERR(params)
 			{}

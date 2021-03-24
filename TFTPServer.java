@@ -6,6 +6,9 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 public class TFTPServer
 {
@@ -188,7 +191,12 @@ public class TFTPServer
 		}
 		else if (opcode == OP_WRQ)
 		{
-			//	boolean result = receive_DATA_send_ACK(params);
+			try {
+				boolean result = receive_DATA_send_ACK(sendSocket,requestedFile);
+			} catch (IOException e) {
+				System.err.println("We tried receiving data, it ain't looking good chief.");
+				e.printStackTrace();
+			}
 		}
 		else
 		{
@@ -256,9 +264,48 @@ public class TFTPServer
 		return true;
 	}
 
-		/*private boolean receive_DATA_send_ACK(params)
-			{return true;}
+		private boolean receive_DATA_send_ACK(DatagramSocket sendSocket, String requestedFile) throws IOException {
+			boolean lastPacketReceived = false;
+			byte[] buffer = new byte[512];
+			DatagramPacket receiverPacket = new DatagramPacket(buffer, buffer.length);
 
+			//first let's create the file using the file name.
+			Files.createFile(Path.of(WRITEDIR + requestedFile));
+
+			//now let's start receiving data through the socket.
+			while (!lastPacketReceived) {
+				sendSocket.receive(receiverPacket);
+
+				buffer = receiverPacket.getData();
+				TFTPPacket tftpPacket = new TFTPPacket(buffer,buffer.length);
+
+				//it's time to parse the packet. also write it to the file immediately.
+
+				ByteBuffer wrap = ByteBuffer.wrap(buffer);
+				//extracting the opcode and the block number.
+				short blockNum = tftpPacket.getBlockNumber(receiverPacket);
+
+				//extracting the data.
+				byte[] data = new byte[512];
+				wrap.get(data,5,buffer.length);
+
+				// write to the file.
+				Files.write(Path.of(WRITEDIR + requestedFile), data, StandardOpenOption.APPEND);
+
+				//check if it was the last packet.
+				if (receiverPacket.getLength()-4 < 512) {
+					lastPacketReceived = true;
+				}
+
+				//send ack.
+				DatagramPacket ackPacket = tftpPacket.ackPacket(blockNum);
+				sendSocket.send(ackPacket);
+
+			}
+
+			return Files.exists(Path.of(WRITEDIR + requestedFile));
+		}
+			/*
 		private void send_ERR(params)
 			{}*/
 

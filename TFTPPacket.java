@@ -16,6 +16,10 @@ public class TFTPPacket {
         this.data=data;
         this.DataLength = DataLength;
     }
+    public TFTPPacket(byte[] data,int DataLength) {
+        this.data=data;
+        this.DataLength = DataLength;
+    }
 
     /**
      * Create a data packet to be sent and returns it.
@@ -59,7 +63,9 @@ public class TFTPPacket {
     public DatagramPacket ackPacket (short blockNumber){
         ByteBuffer byteBuffer = ByteBuffer.allocate(BUFSIZE);
         byteBuffer.putShort(OP_ACK);
-        byteBuffer.putShort(block);
+        byteBuffer.putShort(blockNumber);
         return new DatagramPacket(byteBuffer.array(), tftpHeader);
     }
+
+
 }

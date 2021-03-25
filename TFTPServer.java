@@ -22,6 +22,7 @@ public class TFTPServer
 	public static final int OP_ACK = 4;
 	public static final int OP_ERR = 5;
 
+
 	public static void main(String[] args) {
 		if (args.length > 0)
 		{
@@ -177,15 +178,18 @@ public class TFTPServer
 		if(opcode == OP_RRQ)
 		{
 			// See "TFTP Formats" in TFTP specification for the DATA and ACK packet contents
+			System.out.println("Sending....");
 			try {
-				System.out.println("Sending....");
-				send_DATA_receive_ACK(sendSocket, requestedFile);
+				if (readRequest(sendSocket, requestedFile))
 				System.out.println("Sending ended successfully!");
-
+				else {
+					System.out.println("Lost connection or something");
+					//send some error message
+				}
 			} catch (IOException e) {
-				System.err.println("Something went wrong when parsing the file!!");
 				e.printStackTrace();
 			}
+
 		}
 		else if (opcode == OP_WRQ)
 		{
@@ -208,9 +212,77 @@ public class TFTPServer
 	/**
 	 To be implemented
 	 */
-	private boolean send_DATA_receive_ACK(DatagramSocket sendSocket , String requestedFile) throws IOException {
+	private boolean readRequest(DatagramSocket sendSocket , String requestedFile) throws IOException {
+		short blockNumber = 1;
+		int transmissionLimit = 5;
+		short ackNumber = 0;
+		int reSend = 0;
+		boolean finished = false;
+		File file = new File(requestedFile);
+		FileInputStream fileInputStream = null;
+
+		byte[] buf = new byte[dataSize];
+		byte[] receiveAck = new byte[BUFSIZE];
+
+		DatagramPacket receiver = new DatagramPacket(receiveAck, receiveAck.length);
+		DatagramPacket sender = null;
+		try {
+			fileInputStream = new FileInputStream(file);
+		} catch (FileNotFoundException e) {
+			//TODO handle error  1  File not found.
+			//for now We will just print an error message for debugging
+			System.err.println("The file requested was not found!!");
+			e.printStackTrace();
+		}
+		while (true) {
+
+
+			int byteRead = fileInputStream.read(buf);
+			TFTPPacket tftpPacket = new TFTPPacket(blockNumber, buf, byteRead);
+			sender = tftpPacket.dataPacket();
+			do {
+
+				reSend++;
+
+				try {
+				sendSocket.send(sender);
+				System.out.println("Sent block # " + blockNumber);
+
+					sendSocket.setSoTimeout(5000);
+					sendSocket.receive(receiver);
+					ackNumber = tftpPacket.getAckNumber(receiver);
+					System.out.println("transmission attempt # " + reSend);
+				} catch (SocketTimeoutException e) {
+					System.out.println("It timed out and will try to send again");
+					System.out.println("transmission attempt # " + reSend);
+					if (reSend>=transmissionLimit){
+						//send timeout error
+						System.out.println(ackNumber+" "+blockNumber+" "+reSend+" "+transmissionLimit);
+						return false;
+					}
+				}
+
+
+				if (ackNumber == blockNumber) {
+					System.out.println("The correct block was received by the client!	 block # " + blockNumber);
+					blockNumber++;
+					reSend=0;
+					break;
+				}
+
+
+			}while (reSend<transmissionLimit);
+			if (byteRead < 512) {
+				fileInputStream.close();
+				return true;
+
+			}
+		}
+	}
+	/*private boolean send_DATA_receive_ACK(DatagramSocket sendSocket , String requestedFile) {
 		System.out.println("Responding to RRQ issued by: "+sendSocket.getInetAddress()+" Using port: "+ sendSocket.getPort());
 		short blockNumber = 1;
+		int retransmissionCount = 0;
 		boolean transferEnd = false;
 		boolean lastPacket = false;
 		File file = new File(requestedFile);
@@ -220,7 +292,7 @@ public class TFTPServer
 		//receiveAck array will be use to get the ack message
 		byte [] receiveAck = new byte[BUFSIZE];
 		DatagramPacket receiver = new DatagramPacket(receiveAck,receiveAck.length);
-
+		DatagramPacket sender = null;
 		try {
 			fileInputStream = new FileInputStream(file);
 		} catch (FileNotFoundException e) {
@@ -231,102 +303,127 @@ public class TFTPServer
 		}
 		//TODO timeout functionality. problem 2 In case of a read request.
 		int byteRead;
-		while (fileInputStream.available()>=0){
-			//reading data from the file into the buffer
-			byteRead = fileInputStream.read(buf);
-			//if this is the last packet i.e less than 512 bytes
+		try {
+			while (fileInputStream.available() >= 0) {
+				try {
+					//reading data from the file into the buffer
+					byteRead = fileInputStream.read(buf);
 
-			//using the TFTPPacket class to construct a datagram.
-			TFTPPacket tftpPacket = new TFTPPacket(blockNumber,buf,byteRead);
-			DatagramPacket sender = tftpPacket.dataPacket();
-			//sending the datagram
-			sendSocket.send(sender);
-			System.out.println("Sent block # " + blockNumber);
-			// Receiving ack message before continuing
-			sendSocket.receive(receiver);
-			short ackNumber = tftpPacket.getAckNumber(receiver);
-			if (ackNumber==blockNumber){
-				System.out.println("The correct block was received by the client!	 block # " + blockNumber);
-				blockNumber++;
-			}else{
-				//TODO implement retransmission later!!!
-				System.err.println("ackNumber is not correct");
-				return false;
-			}
-			if (byteRead<512){
-				fileInputStream.close();
-				return true;
+					//using the TFTPPacket class to construct a datagram.
+					TFTPPacket tftpPacket = new TFTPPacket(blockNumber, buf, byteRead);
+					 sender = tftpPacket.dataPacket();
+					//sending the datagram
+					//sendSocket.send(sender);
+					//System.out.println("Sent block # " + blockNumber);
+					//sendSocket.setSoTimeout(1);
+					// Receiving ack message before continuing
+					//sendSocket.receive(receiver);
+					sendAndReceivePackets(sendSocket,sender,blockNumber,receiver);
+					short ackNumber = tftpPacket.getAckNumber(receiver);
+					if (ackNumber == blockNumber) {
+						System.out.println("The correct block was received by the client!	 block # " + blockNumber);
+						retransmissionCount=0;
+						blockNumber++;
+					} else {
+						retransmissionCount++;
+						System.out.println("Jahesh");
+						System.out.println(retransmissionCount);
+						throw new SocketTimeoutException();
+					}
+					//if this is the last packet i.e less than 512 bytes
+					if (byteRead < 512) {
+						fileInputStream.close();
+						return true;
 
+					}
+				} catch (SocketTimeoutException e) {
+					if (retransmissionCount>5){
+						System.out.println("Cannot try again");
+						fileInputStream.close();
+						return false;
+						//do more..?
+					}
+					else {
+						sendAndReceivePackets(sendSocket,sender,blockNumber,receiver);
+					}
+				}
 			}
+		}catch (IOException e){
+			//do something else
 		}
 		return true;
-	}
+	}*/
 
-		private boolean receive_DATA_send_ACK(DatagramSocket sendSocket, String requestedFile) throws IOException {
-			System.out.println("Responding to WRQ issued by: "+sendSocket.getInetAddress()+" Using port: "+ sendSocket.getPort());
-			boolean lastPacketReceived = false;
-			byte[] buffer = new byte[BUFSIZE];
-			File file = new File(requestedFile);
-			DatagramPacket receiverPacket = new DatagramPacket(buffer, buffer.length, sendSocket.getRemoteSocketAddress());
+	private boolean receive_DATA_send_ACK(DatagramSocket sendSocket, String requestedFile) throws IOException {
+		System.out.println("Responding to WRQ issued by: "+sendSocket.getInetAddress()+" Using port: "+ sendSocket.getPort());
+		boolean lastPacketReceived = false;
+		byte[] buffer = new byte[BUFSIZE];
+		File file = new File(requestedFile);
+		DatagramPacket receiverPacket = new DatagramPacket(buffer, buffer.length, sendSocket.getRemoteSocketAddress());
 
-			//first we need to send the first ack to let the client know where to send the data.
-			ByteBuffer byteBuffer = ByteBuffer.allocate(BUFSIZE);
-			byteBuffer.putShort((short)4); //op_ac
-			byteBuffer.putShort((short)0); //block number
-			DatagramPacket firstAck = new DatagramPacket(byteBuffer.array(), 4, sendSocket.getRemoteSocketAddress());
-			DatagramSocket dataSocket = new DatagramSocket(5320);
-			System.out.println("Receiving data at port: 5320");
-			dataSocket.send(firstAck);
-
-
-			//first let's create the file using the file name.
-			if(!Files.exists(Path.of(requestedFile)))
-				Files.createFile(Path.of(requestedFile));
-
-			//now let's start receiving data through the socket.
-			while (!lastPacketReceived) {
-				dataSocket.receive(receiverPacket);
-				buffer = receiverPacket.getData();
-				TFTPPacket tftpPacket = new TFTPPacket(buffer,buffer.length);
-
-				//it's time to parse the packet. also write it to the file immediately.
-
-				ByteBuffer wrap = ByteBuffer.wrap(buffer);
-				//extracting the opcode and the block number.
-				wrap.getShort();
-				short blockNum = wrap.getShort();
+		//first we need to send the first ack to let the client know where to send the data.
+		ByteBuffer byteBuffer = ByteBuffer.allocate(BUFSIZE);
+		byteBuffer.putShort((short)4); //op_ac
+		byteBuffer.putShort((short)0); //block number
+		DatagramPacket firstAck = new DatagramPacket(byteBuffer.array(), 4, sendSocket.getRemoteSocketAddress());
+		DatagramSocket dataSocket = new DatagramSocket(5320);
+		System.out.println("Receiving data at port: 5320");
+		dataSocket.send(firstAck);
 
 
-				//System.out.println("Block number is: " + blockNum);
+		//first let's create the file using the file name.
+		if(!Files.exists(Path.of(requestedFile)))
+			Files.createFile(Path.of(requestedFile));
 
-				// write to the file.
-				byte[] data = Arrays.copyOfRange(buffer, 4, receiverPacket.getLength());
-				wrap.clear();
-				Files.write(Path.of(requestedFile), data, StandardOpenOption.APPEND);
+		//now let's start receiving data through the socket.
+		while (!lastPacketReceived) {
+			dataSocket.receive(receiverPacket);
+			buffer = receiverPacket.getData();
+			TFTPPacket tftpPacket = new TFTPPacket(buffer,buffer.length);
 
-				//System.out.println("Wrote the data to the file.");
+			//it's time to parse the packet. also write it to the file immediately.
 
-				//check if it was the last packet.
-				if (receiverPacket.getLength() < 512) {
-					lastPacketReceived = true;
-					System.out.println("got the last packet.");
-				}
+			ByteBuffer wrap = ByteBuffer.wrap(buffer);
+			//extracting the opcode and the block number.
+			wrap.getShort();
+			short blockNum = wrap.getShort();
 
-				//send ack.
-				DatagramPacket ackPacket = tftpPacket.ackPacket(blockNum);
-				ackPacket.setSocketAddress(sendSocket.getRemoteSocketAddress());
-				dataSocket.send(ackPacket);
-				//System.out.println("Ack sent.");
 
+			//System.out.println("Block number is: " + blockNum);
+
+			// write to the file.
+			byte[] data = Arrays.copyOfRange(buffer, 4, receiverPacket.getLength());
+			wrap.clear();
+			Files.write(Path.of(requestedFile), data, StandardOpenOption.APPEND);
+
+			//System.out.println("Wrote the data to the file.");
+
+			//check if it was the last packet.
+			if (receiverPacket.getLength() < 512) {
+				lastPacketReceived = true;
+				System.out.println("got the last packet.");
 			}
 
-			System.out.println("Done with receiving file.");
-			dataSocket.close();
-			return Files.exists(Path.of( requestedFile));
+			//send ack.
+			DatagramPacket ackPacket = tftpPacket.ackPacket(blockNum);
+			ackPacket.setSocketAddress(sendSocket.getRemoteSocketAddress());
+			dataSocket.send(ackPacket);
+			//System.out.println("Ack sent.");
+
 		}
+
+		System.out.println("Done with receiving file.");
+		dataSocket.close();
+		return Files.exists(Path.of( requestedFile));
+	}
 			/*
 		private void send_ERR(params)
 			{}*/
+	private void sendAndReceivePackets(DatagramSocket sendSocket,DatagramPacket sender, int blockNumber, DatagramPacket receiver) throws IOException {
+		sendSocket.send(sender);
+		System.out.println("Sent block # " + blockNumber);
+		sendSocket.receive(receiver);
+	}
 
 }
 

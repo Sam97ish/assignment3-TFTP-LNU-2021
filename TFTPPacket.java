@@ -1,5 +1,6 @@
 import java.net.DatagramPacket;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class TFTPPacket {
     private short block;
@@ -28,9 +29,10 @@ public class TFTPPacket {
         ByteBuffer buffer = ByteBuffer.allocate(BUFSIZE);
         buffer.putShort(OP_DAT);
         buffer.putShort(block);
-        buffer.put(data, 0, DataLength);
+        buffer.put(data);
+        System.out.println(Arrays.toString(buffer.array()));
 
-        return new DatagramPacket(buffer.array(), tftpHeader+ DataLength);
+        return new DatagramPacket(buffer.array(),0, tftpHeader+ DataLength);
     }
     /**
      returns the ack number from the incoming datagram

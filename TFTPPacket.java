@@ -22,6 +22,10 @@ public class TFTPPacket {
         this.DataLength = DataLength;
     }
 
+    public TFTPPacket() {
+        ;
+    }
+
     /**
      * Create a data packet to be sent and returns it.
      */
@@ -67,6 +71,15 @@ public class TFTPPacket {
         byteBuffer.putShort(OP_ACK);
         byteBuffer.putShort(blockNumber);
         return new DatagramPacket(byteBuffer.array(), tftpHeader);
+    }
+
+    public DatagramPacket errorPacket(short ErrorCode, String ErrorMsg){
+        ByteBuffer byteBuffer = ByteBuffer.allocate(BUFSIZE);
+        byteBuffer.putShort(OP_ERR);
+        byteBuffer.putShort(ErrorCode);
+        byteBuffer.put(ErrorMsg.getBytes());
+        byteBuffer.putShort((short) 0);
+        return new DatagramPacket(byteBuffer.array(), 5+ErrorMsg.getBytes().length);
     }
 
 

@@ -360,20 +360,27 @@ public class TFTPServer
 		byte[] buffer = new byte[BUFSIZE];
 		File file = new File(requestedFile);
 		DatagramPacket receiverPacket = new DatagramPacket(buffer, buffer.length, sendSocket.getRemoteSocketAddress());
+		DatagramSocket dataSocket = new DatagramSocket(5320);
+		System.out.println("Receiving data at port: 5320");
+
+		//Check if file exists, if it does report error #6.
+		if(!Files.exists(Path.of(requestedFile)))
+			Files.createFile(Path.of(requestedFile));
+		else{//file does exist error 6.
+			TFTPPacket errorCreator = new TFTPPacket();
+			DatagramPacket errorPacket = errorCreator.errorPacket((short) 6,"File Already Exists.");
+			errorPacket.setSocketAddress(sendSocket.getRemoteSocketAddress());
+			dataSocket.send(errorPacket);
+			System.err.println("Sending an already exist error to client.");
+			return false;
+		}
 
 		//first we need to send the first ack to let the client know where to send the data.
 		ByteBuffer byteBuffer = ByteBuffer.allocate(BUFSIZE);
 		byteBuffer.putShort((short)4); //op_ac
 		byteBuffer.putShort((short)0); //block number
 		DatagramPacket firstAck = new DatagramPacket(byteBuffer.array(), 4, sendSocket.getRemoteSocketAddress());
-		DatagramSocket dataSocket = new DatagramSocket(5320);
-		System.out.println("Receiving data at port: 5320");
 		dataSocket.send(firstAck);
-
-
-		//first let's create the file using the file name.
-		if(!Files.exists(Path.of(requestedFile)))
-			Files.createFile(Path.of(requestedFile));
 
 		//now let's start receiving data through the socket.
 		while (!lastPacketReceived) {

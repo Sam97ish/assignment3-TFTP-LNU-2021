@@ -79,6 +79,7 @@ public class TFTPPacket {
         byteBuffer.putShort(ErrorCode);
         byteBuffer.put(ErrorMsg.getBytes());
         byteBuffer.putShort((short) 0);
+        System.err.println("Error code: "+ErrorCode+" Error OP code: "+OP_ERR+ " Error Message: "+ErrorMsg);
         return new DatagramPacket(byteBuffer.array(), 5+ErrorMsg.getBytes().length);
     }
 

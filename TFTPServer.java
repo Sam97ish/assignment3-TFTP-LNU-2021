@@ -13,7 +13,7 @@ public class TFTPServer
 	public static final int TFTPPORT = 4970;
 	public static final int BUFSIZE = 516;
 	private int dataSize = 512;
-	public static final String READDIR = "public\\"; //custom address at your PC
+	public static final String READDIR = "./public/"; //custom address at your PC
 	public static final String WRITEDIR = "./public/"; //custom address at your PC
 	// OP codes
 	public static final int OP_RRQ = 1;

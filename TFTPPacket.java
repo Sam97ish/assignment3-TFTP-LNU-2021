@@ -34,8 +34,6 @@ public class TFTPPacket {
         buffer.putShort(OP_DAT);
         buffer.putShort(block);
         buffer.put(data);
-        System.out.println(Arrays.toString(buffer.array()));
-
         return new DatagramPacket(buffer.array(),0, tftpHeader+ DataLength);
     }
     /**
@@ -44,24 +42,14 @@ public class TFTPPacket {
     public short getAckNumber (DatagramPacket ack){
         ByteBuffer buffer = ByteBuffer.wrap(ack.getData());
         short opcode = buffer.getShort();
+        //if an error message is received instead of ACK then we return -2 so the server can send an error message.
         if (opcode == OP_ERR) {
-            //Do something and close the connection
+            System.out.println("Client sent an error message!! with error code"+buffer.getShort());
+            return -2;
         }
         return buffer.getShort();
     }
 
-    /**
-     * returns the block number of an incoming datagram
-     */
-    public short getBlockNumber (DatagramPacket packet){
-        ByteBuffer buffer = ByteBuffer.wrap(packet.getData());
-        short opcode = buffer.getShort();
-        if (opcode == OP_ERR) {
-            //Do something and close the connection
-        }
-
-        return buffer.getShort();
-    }
 
     /**
      * Creates and ack message to send to the client using the block number that was received
@@ -73,6 +61,9 @@ public class TFTPPacket {
         return new DatagramPacket(byteBuffer.array(), tftpHeader);
     }
 
+    /**
+     * Create an error packet to be sent and returns it.
+     */
     public DatagramPacket errorPacket(short ErrorCode, String ErrorMsg){
         ByteBuffer byteBuffer = ByteBuffer.allocate(BUFSIZE);
         byteBuffer.putShort(OP_ERR);

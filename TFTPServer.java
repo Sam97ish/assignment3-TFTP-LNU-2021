@@ -397,9 +397,9 @@ public class TFTPServer
 	 */
 	private void send_ERR(DatagramSocket sendSocket,short errorCode, String errorMessage) {
 		DatagramPacket sender = new TFTPPacket().errorPacket(errorCode,errorMessage);
-		System.err.println("error code: " +errorCode);
 		try {
 			sendSocket.send(sender);
+			sendSocket.close();
 		} catch (IOException e) {
 			System.out.println("failed sending error message!");
 			e.printStackTrace();
